@@ -9,11 +9,13 @@ import pyshapley.game
 import pyshapley.solution
 from joblib import Parallel, delayed
 
-ns = np.arange(5, 6)
+from shapleysearch.persistence import LocalCache
+
+ns = np.arange(9, 13)
 size_population = 100
 n_generations = 1000
-p_remove = 0.5
-p_mutation = 0.6
+p_remove = 0.7
+p_mutation = 0.3
 p_crossover_top = (0, 0.05)
 # check = lambda p_crossover, p_mutation, s, p_remove: ((p_crossover*s)*((p_crossover*s)-1))/2+p_mutation*s < p_remove*s
 
@@ -31,6 +33,8 @@ bounds = {
     "-1": lambda n: -1
 }
 
+cachemanager = LocalCache("/media/data/shapleysearch/")
+
 
 def sample_candidate(payoff):
     candidate = payoff.copy()
@@ -46,6 +50,10 @@ def sample_candidate(payoff):
 
 
 def evaluate_candidate(players, candidate):
+    cache_hit = cachemanager.get(len(players), candidate)
+    if cache_hit is not None:
+        return cache_hit
+
     game = pyshapley.game.ManualDictGame(players, candidate)
     solution = pyshapley.solution.Shapley(game)
     phi_min = None
@@ -71,7 +79,7 @@ def sample_evaluated_population(players, payoff, n_sample):
         phi_min = evaluate_candidate(players, cand)
         return (cand, phi_min)
 
-    return Parallel(n_jobs=8)(delayed(sample_and_eval_cand) for _ in range(n_sample))
+    return Parallel(n_jobs=8)(delayed(sample_and_eval_cand)() for _ in range(n_sample))
 
 """def equal_candidate(cand1, cand2):
     if len(cand1) is not len(cand2):
@@ -192,7 +200,7 @@ for n_player in ns:
         n_sampled_total += n_added_crossover
         n_sampled_total_co += n_added_crossover
 
-
+        cachemanager.update(n_player, population)
         #print(f"#pop = {len(population)}")
 
     # Final evaluation
@@ -213,3 +221,4 @@ for n_player in ns:
             print(f"\tbound by {name_bound}={val_bound}")
         else:
             print(f"\tNOT BOUND by {name_bound}={val_bound}")
+    print(f"Ended completely {datetime.fromtimestamp(time.time())}")

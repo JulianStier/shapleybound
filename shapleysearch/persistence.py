@@ -1,15 +1,78 @@
+import hashlib
 import os
 import warnings
 import numpy as np
 import pandas as pd
-
 import s3fs
+from filelock import Timeout, FileLock
+from joblib import Parallel, delayed
 
 
 def serialize_candidate(cand: dict):
     #return "".join([f"{key}:{np.round(cand[key],6):.6f}" for key in sorted(cand.keys()) if len(key) > 0])
     #return "".join([f"{key}:{cand[key]:.4f}" for key in sorted(cand.keys()) if len(key) > 0])
     return "".join([f"{key}:{np.round(cand[key],4)}" for key in sorted(cand.keys()) if len(key) > 0])
+
+
+class LocalCache(object):
+    def __init__(self, path_base):
+        self._path_base = os.path.expanduser(path_base)
+        if not os.path.exists(self._path_base):
+            os.makedirs(self._path_base)
+
+    def _encode(self, cand_serialized):
+        return hashlib.sha256(cand_serialized.encode("utf-8")).hexdigest()
+
+    def get(self, n_players: int, cand):
+        marshalled = serialize_candidate(cand)
+        hashed = self._encode(marshalled)
+        path_cand = os.path.join(self._path_base, f"game-{n_players}", f"game-{n_players}-{hashed}.txt")
+        if not os.path.exists(path_cand):
+            return None
+        else:
+            with open(path_cand, "r") as handle_read:
+                found = None
+                while (line := handle_read.readline().rstrip()):
+                    if len(line) < 1:
+                        continue
+                    rep, phi_min = line.split(" ")
+                    if marshalled == rep:
+                        found = phi_min
+                        break
+                if found is None:
+                    warnings.warn("Hash matched but did not find entry for candidate")
+                    return None
+                return float(found)
+
+    def update(self, n_players, population):
+        def process_update(cand, phi):
+            if phi is None:
+                return
+            phi = float(phi)
+            marshalled = serialize_candidate(cand)
+            hashed = self._encode(marshalled)
+            name_file = f"game-{n_players}-{hashed}.txt"
+            path_base_locks = os.path.join(self._path_base, f"game-{n_players}-locks")
+            if not os.path.exists(path_base_locks):
+                os.makedirs(path_base_locks)
+            path_base_game = os.path.join(self._path_base, f"game-{n_players}")
+            if not os.path.exists(path_base_game):
+                os.makedirs(path_base_game)
+            path_cand = os.path.join(path_base_game, name_file)
+            path_lock = os.path.join(path_base_locks, name_file)
+            lock = FileLock(path_lock, 10)
+            with lock:
+                # Search whether cand is already persisted
+                if os.path.exists(path_cand):
+                    with open(path_cand, "r") as handle:
+                        if marshalled in handle.read():
+                            return
+
+                with open(path_cand, "a+") as handle:
+                    handle.write(f"{marshalled} {phi}\n")
+
+        Parallel(n_jobs=8)(delayed(process_update)(cand, phi) for (cand, phi) in population)
+
 
 
 class CacheManager(object):
@@ -44,9 +107,7 @@ class CacheManager(object):
         self._data_local[n_players] = pd.read_hdf(path_evals, key="table")
 
 
-    def get(self, candidate):
-        n_players = len(candidate)
-
+    def get(self, n_players, candidate):
         self._load_local(n_players)
         if n_players not in self._data_local:
             return None
