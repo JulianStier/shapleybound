@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "shapleysearch"
+name = "shapleybound"
 version = "0.1.0-dev"
 description = "Genetic Search for a lower bound of shapley values"
 authors = [

@@ -9,9 +9,9 @@ import pyshapley.game
 import pyshapley.solution
 from joblib import Parallel, delayed
 
-from shapleysearch.persistence import LocalCache
+from shapleybound.persistence import LocalCache
 
-ns = np.arange(9, 13)
+ns = np.arange(4, 5)
 size_population = 100
 n_generations = 1000
 p_remove = 0.7

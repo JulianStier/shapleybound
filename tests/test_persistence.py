@@ -5,8 +5,8 @@ import pytest
 import uuid
 from unittest.mock import patch
 
-from shapleysearch.persistence import CacheManager, serialize_candidate, LocalCache
-from shapleysearch.util import sample_base_payoff
+from shapleybound.persistence import CacheManager, serialize_candidate, LocalCache
+from shapleybound.util import sample_base_payoff
 
 
 @pytest.fixture
